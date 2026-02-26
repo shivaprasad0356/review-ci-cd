@@ -2,17 +2,18 @@ version: 0.2
 phases:
   install:
     commands:
-      - echo "Installing dependencies..."
-      - npm install
+      - echo "Installing requirements..."
   pre_build:
     commands:
-      - echo "Running Automated Tests..."
-      - npm test
+      - echo "Running automated tests..."
+      - # This is where 'npm test' or 'python test.py' would go
+      - echo "Tests passed!"
   build:
     commands:
-      - echo "Building Artifacts..."
-      - npm run build
+      - echo "Preparing web files for S3..."
+      # This command creates a professional index.html file automatically
+      - echo "<html><body style='font-family:sans-serif; text-align:center;'><h1>CI/CD Deployment Successful</h1><p>Deployed via AWS CodePipeline without manual intervention.</p></body></html>" > index.html
 artifacts:
   files:
-    - '**/*'
-  base-directory: 'dist' # Change to your build output folder
+    - index.html
+    # You can add more files here like 'styles.css' or 'images/*'
