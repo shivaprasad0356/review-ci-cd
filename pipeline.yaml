@@ -1,89 +1,85 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Professional Automated CI/CD Pipeline with Release Trigger
+Description: End-to-End Professional CI/CD for S3
 
 Resources:
-  # --- 1. S3 BUCKET FOR DEPLOYMENT ---
+  # S3 Bucket Configured for Website Hosting
   AppBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${AWS::StackName}-release-app"
+      BucketName: !Sub "release-app-${AWS::StackName}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
 
-  # --- 2. CODECOMMIT REPOSITORY ---
-  AppRepo:
-    Type: AWS::CodeCommit::Repository
+  AppBucketPolicy:
+    Type: AWS::S3::BucketPolicy
     Properties:
-      RepositoryName: ProfessionalAppRepo
-
-  # --- 3. IAM ROLE FOR CODEBUILD ---
-  CodeBuildRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+      Bucket: !Ref AppBucket
+      PolicyDocument:
         Statement:
           - Effect: Allow
-            Principal:
-              Service: codebuild.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CodeBuildAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - s3:PutObject
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                Resource: "*"
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${AppBucket}/*"
 
-  # --- 4. IAM ROLE FOR CODEPIPELINE ---
+  # IAM Roles (Automatically handles permissions)
   PipelineRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
         Statement:
-          - Effect: Allow
+          - Action: sts:AssumeRole
+            Effect: Allow
             Principal:
               Service: codepipeline.amazonaws.com
-            Action: sts:AssumeRole
       Policies:
-        - PolicyName: PipelineAccess
+        - PolicyName: PipelinePolicy
           PolicyDocument:
-            Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - s3:*
-                  - codecommit:GetBranch
-                  - codecommit:GetCommit
-                  - codecommit:UploadArchive
-                  - codecommit:GetUploadArchiveStatus
-                  - codebuild:BatchGetBuilds
-                  - codebuild:StartBuild
+              - Action: ["s3:*", "codebuild:*", "codecommit:*"]
+                Effect: Allow
                 Resource: "*"
 
-  # --- 5. CODEBUILD PROJECT ---
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+      Policies:
+        - PolicyName: BuildPolicy
+          PolicyDocument:
+            Statement:
+              - Action: ["logs:*", "s3:*"]
+                Effect: Allow
+                Resource: "*"
+
+  # CodeBuild & Pipeline
   BuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub "${AWS::StackName}-Build"
-      ServiceRole: !GetAtt CodeBuildRole.Arn
-      Artifacts:
-        Type: CODEPIPELINE
+      Name: !Sub "${AWS::StackName}-Builder"
+      ServiceRole: !GetAtt BuildRole.Arn
+      Artifacts: {Type: CODEPIPELINE}
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:7.0
-      Source:
-        Type: CODEPIPELINE
+      Source: {Type: CODEPIPELINE}
 
-  # --- 6. THE PIPELINE ---
-  AppPipeline:
+  AppRepo:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-Repo"
+
+  Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
       Name: ReleasePipeline
@@ -94,42 +90,25 @@ Resources:
       Stages:
         - Name: Source
           Actions:
-            - Name: SourceAction
-              ActionTypeId:
-                Category: Source
-                Owner: AWS
-                Provider: CodeCommit
-                Version: '1'
+            - Name: Source
+              ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeCommit, Version: '1'}
               Configuration:
                 RepositoryName: !GetAtt AppRepo.Name
                 BranchName: main
-                PollForSourceChanges: false # Manual Release Trigger
-              OutputArtifacts:
-                - Name: SourceOutput
-        - Name: Build_and_Test
+                PollForSourceChanges: false # Triggered only by Release Change
+              OutputArtifacts: [{Name: SourceOut}]
+        - Name: Build
           Actions:
-            - Name: BuildAction
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: '1'
-              Configuration:
-                ProjectName: !Ref BuildProject
-              InputArtifacts:
-                - Name: SourceOutput
-              OutputArtifacts:
-                - Name: BuildOutput
+            - Name: Build
+              ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: '1'}
+              Configuration: {ProjectName: !Ref BuildProject}
+              InputArtifacts: [{Name: SourceOut}]
+              OutputArtifacts: [{Name: BuildOut}]
         - Name: Deploy
           Actions:
-            - Name: S3Deploy
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: S3
-                Version: '1'
+            - Name: Deploy
+              ActionTypeId: {Category: Deploy, Owner: AWS, Provider: S3, Version: '1'}
               Configuration:
                 BucketName: !Ref AppBucket
                 Extract: true
-              InputArtifacts:
-                - Name: BuildOutput
+              InputArtifacts: [{Name: BuildOut}]
