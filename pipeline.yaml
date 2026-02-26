@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: End-to-End Automated CI/CD - GitHub to S3
+Description: Week 3 CI/CD Pipeline for S3 Deployment
 
 Parameters:
   GitHubRepo:
@@ -8,11 +8,10 @@ Parameters:
     Type: String
 
 Resources:
-  # S3 Bucket for Hosting
   AppBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "release-app-${AWS::StackName}-${AWS::AccountId}"
+      BucketName: !Sub "app-release-${AWS::StackName}-${AWS::AccountId}"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: false
         BlockPublicPolicy: false
@@ -32,7 +31,6 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub "arn:aws:s3:::${AppBucket}/*"
 
-  # IAM Roles
   PipelineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -46,7 +44,7 @@ Resources:
         - PolicyName: PipelinePolicy
           PolicyDocument:
             Statement:
-              - Action: ["s3:*", "codebuild:*", "codestar-connections:UseConnection"]
+              - Action: ["s3:*", "codebuild:*", "codestar-connections:UseConnection", "iam:PassRole"]
                 Effect: Allow
                 Resource: "*"
 
@@ -67,11 +65,10 @@ Resources:
                 Effect: Allow
                 Resource: "*"
 
-  # CodeBuild Project
   BuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub "${AWS::StackName}-Builder"
+      Name: !Sub "${AWS::StackName}-Build"
       ServiceRole: !GetAtt BuildRole.Arn
       Artifacts: {Type: CODEPIPELINE}
       Environment:
@@ -80,8 +77,7 @@ Resources:
         Image: aws/codebuild/standard:7.0
       Source: {Type: CODEPIPELINE}
 
-  # The Pipeline
-  AppPipeline:
+  ReleasePipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
       Name: ReleasePipeline
@@ -93,11 +89,7 @@ Resources:
         - Name: Source
           Actions:
             - Name: GitHub_Source
-              ActionTypeId:
-                Category: Source
-                Owner: AWS
-                Provider: CodeStarSourceConnection
-                Version: '1'
+              ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeStarSourceConnection, Version: '1'}
               Configuration:
                 ConnectionArn: !Ref ConnectionArn
                 FullRepositoryId: !Ref GitHubRepo
