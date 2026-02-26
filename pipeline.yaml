@@ -1,16 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: End-to-End Automated CI/CD - GitHub to S3 (Release Trigger Only)
+Description: End-to-End Automated CI/CD - GitHub to S3
 
 Parameters:
   GitHubRepo:
     Type: String
-    Description: "Format: Username/RepoName (e.g., MyUser/MyRepo)"
-  ConnectionArn: "arn:aws:codestar-connections:us-east-1:877520723193:connection/6109936b-80a6-42ec-aa4e-d49cfa0c8a60"
+  ConnectionArn:
     Type: String
-    Description: "The ARN of your AWS CodeStar Connection to GitHub"
 
 Resources:
-  # --- 1. S3 BUCKET FOR HOSTING ---
+  # S3 Bucket for Hosting
   AppBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -34,7 +32,7 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub "arn:aws:s3:::${AppBucket}/*"
 
-  # --- 2. IAM ROLES (AUTOMATED PERMISSIONS) ---
+  # IAM Roles
   PipelineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -69,7 +67,7 @@ Resources:
                 Effect: Allow
                 Resource: "*"
 
-  # --- 3. CODEBUILD PROJECT ---
+  # CodeBuild Project
   BuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -82,7 +80,7 @@ Resources:
         Image: aws/codebuild/standard:7.0
       Source: {Type: CODEPIPELINE}
 
-  # --- 4. THE PIPELINE ---
+  # The Pipeline
   AppPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -104,9 +102,9 @@ Resources:
                 ConnectionArn: !Ref ConnectionArn
                 FullRepositoryId: !Ref GitHubRepo
                 BranchName: main
-                DetectChanges: false # CRITICAL: Disables auto-trigger on push
+                DetectChanges: false
               OutputArtifacts: [{Name: SourceOut}]
-        - Name: Build_and_Test
+        - Name: Build
           Actions:
             - Name: Build_Action
               ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: '1'}
