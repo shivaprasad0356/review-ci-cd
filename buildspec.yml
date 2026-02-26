@@ -1,0 +1,18 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - echo "Installing dependencies..."
+      - npm install
+  pre_build:
+    commands:
+      - echo "Running Automated Tests..."
+      - npm test
+  build:
+    commands:
+      - echo "Building Artifacts..."
+      - npm run build
+artifacts:
+  files:
+    - '**/*'
+  base-directory: 'dist' # Change to your build output folder
