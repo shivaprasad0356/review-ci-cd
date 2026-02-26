@@ -1,19 +1,96 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Description: Professional Automated CI/CD Pipeline with Release Trigger
+
 Resources:
-  # S3 Bucket for Production Deployment
-  ProdAppBucket:
+  # --- 1. S3 BUCKET FOR DEPLOYMENT ---
+  AppBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${AWS::StackName}-release-bucket"
-      WebsiteConfiguration:
-        IndexDocument: index.html
+      BucketName: !Sub "${AWS::StackName}-release-app"
 
-  # CodePipeline Configuration
-  ProfessionalPipeline:
+  # --- 2. CODECOMMIT REPOSITORY ---
+  AppRepo:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: ProfessionalAppRepo
+
+  # --- 3. IAM ROLE FOR CODEBUILD ---
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: "*"
+
+  # --- 4. IAM ROLE FOR CODEPIPELINE ---
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:UploadArchive
+                  - codecommit:GetUploadArchiveStatus
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: "*"
+
+  # --- 5. CODEBUILD PROJECT ---
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${AWS::StackName}-Build"
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+      Source:
+        Type: CODEPIPELINE
+
+  # --- 6. THE PIPELINE ---
+  AppPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      ExecutionMode: QUEUED 
+      Name: ReleasePipeline
       RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref AppBucket
       Stages:
         - Name: Source
           Actions:
@@ -24,9 +101,9 @@ Resources:
                 Provider: CodeCommit
                 Version: '1'
               Configuration:
-                RepositoryName: MyRepo
+                RepositoryName: !GetAtt AppRepo.Name
                 BranchName: main
-                PollForSourceChanges: false # CRITICAL: Disables auto-trigger on push
+                PollForSourceChanges: false # Manual Release Trigger
               OutputArtifacts:
                 - Name: SourceOutput
         - Name: Build_and_Test
@@ -43,7 +120,7 @@ Resources:
                 - Name: SourceOutput
               OutputArtifacts:
                 - Name: BuildOutput
-        - Name: Deploy_Release
+        - Name: Deploy
           Actions:
             - Name: S3Deploy
               ActionTypeId:
@@ -52,7 +129,7 @@ Resources:
                 Provider: S3
                 Version: '1'
               Configuration:
-                BucketName: !Ref ProdAppBucket
+                BucketName: !Ref AppBucket
                 Extract: true
               InputArtifacts:
                 - Name: BuildOutput
