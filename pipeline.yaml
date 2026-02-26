@@ -1,12 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Week 3 CI/CD Pipeline for S3 Deployment
-
 Parameters:
   GitHubRepo:
     Type: String
   ConnectionArn:
     Type: String
-
 Resources:
   AppBucket:
     Type: AWS::S3::Bucket
@@ -19,7 +17,6 @@ Resources:
         RestrictPublicBuckets: false
       WebsiteConfiguration:
         IndexDocument: index.html
-
   AppBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -30,7 +27,6 @@ Resources:
             Principal: "*"
             Action: s3:GetObject
             Resource: !Sub "arn:aws:s3:::${AppBucket}/*"
-
   PipelineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -47,7 +43,6 @@ Resources:
               - Action: ["s3:*", "codebuild:*", "codestar-connections:UseConnection", "iam:PassRole"]
                 Effect: Allow
                 Resource: "*"
-
   BuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -64,7 +59,6 @@ Resources:
               - Action: ["logs:*", "s3:*"]
                 Effect: Allow
                 Resource: "*"
-
   BuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -76,7 +70,6 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:7.0
       Source: {Type: CODEPIPELINE}
-
   ReleasePipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
